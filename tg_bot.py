@@ -14,11 +14,39 @@ QUESTIONS = create_questions_dict(env.str('FILENAME'))
 CHOOSING, TYPING_REPLY = range(2)
 
 
+def init_reply_markup():
+    keyboard = [['Новый вопрос', 'Сдаться'], ['Мой счет']]
+    return ReplyKeyboardMarkup(keyboard)
+
+
+def send_message(update: Update, reply_markup: ReplyKeyboardMarkup, message: str):
+    update.message.reply_text(
+        text=message,
+        reply_markup=reply_markup
+    )
+
+
+def init_redis(update, reply_markup):
+    redis_uri = urlparse(env.str('REDIS_URI'))
+    try:
+        r = redis.StrictRedis(
+            host=redis_uri.hostname,
+            port=int(redis_uri.port),
+            password=redis_uri.password,
+            charset='utf-8',
+            decode_responses=True
+        )
+        r.ping()
+        return r
+    except redis.exceptions.ConnectionError:
+        message = 'Сервис временно не доступен. Попробуйте позже.'
+        send_message(update, reply_markup, message)
+
+
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
-    keyboard = [['Новый вопрос', 'Сдаться'], ['Мой счет']]
-    reply_markup = ReplyKeyboardMarkup(keyboard)
+    reply_markup = init_reply_markup()
 
     update.message.reply_markdown_v2(
         fr'Здравствуйте {user.mention_markdown_v2()}\! Есть три кнопки. Какую нажмете?',
@@ -29,120 +57,77 @@ def start(update: Update, context: CallbackContext) -> None:
 
 
 def handle_new_question_request(update: Update, context: CallbackContext):
-    redis_uri = urlparse(env.str('REDIS_URI'))
-    r = redis.StrictRedis(
-        host=redis_uri.hostname,
-        port=int(redis_uri.port),
-        password=redis_uri.password,
-        charset='utf-8',
-        decode_responses=True
-    )
-    keyboard = [['Новый вопрос', 'Сдаться'], ['Мой счет']]
-    reply_markup = ReplyKeyboardMarkup(keyboard)
-    random_question = random.choice(list(QUESTIONS.items()))
+    reply_markup = init_reply_markup()
+    r = init_redis(update, reply_markup)
 
-    try:
-        r.set(str(update.message.from_user.id), random_question[0], 600)
-    except redis.exceptions.ConnectionError:
-        send_error_msg(update, reply_markup)
+    if not r:
         return CHOOSING
 
-    update.message.reply_text(
-        text=random_question[1]['question'],
-        reply_markup=reply_markup
-    )
+    random_question = random.choice(list(QUESTIONS.items()))
+    r.set(str(update.message.from_user.id), random_question[0], 600)
+    message = random_question[1]['question']
+    send_message(update, reply_markup, message)
 
     return TYPING_REPLY
 
 
 def handle_solution_attempt(update: Update, context: CallbackContext):
-    redis_uri = urlparse(env.str('REDIS_URI'))
-    r = redis.StrictRedis(
-        host=redis_uri.hostname,
-        port=int(redis_uri.port),
-        password=redis_uri.password,
-        charset='utf-8',
-        decode_responses=True
-    )
-    keyboard = [['Новый вопрос', 'Сдаться'], ['Мой счет']]
-    reply_markup = ReplyKeyboardMarkup(keyboard)
+    reply_markup = init_reply_markup()
+    r = init_redis(update, reply_markup)
 
-    try:
-        if not r.get(str(update.message.from_user.id)):
-            update.message.reply_text(
-                text='Ответ остался без вопроса. Получите новый вопрос.',
-                reply_markup=reply_markup
-            )
-            return CHOOSING
-        answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
-    except redis.exceptions.ConnectionError:
-        send_error_msg(update, reply_markup)
+    if not r:
         return TYPING_REPLY
+
+    if not r.get(str(update.message.from_user.id)):
+        message = 'Ответ остался без вопроса. Получите новый вопрос.'
+        send_message(update, reply_markup, message)
+        return CHOOSING
+
+    answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
 
     if not is_correct_answer(answer_text, update.message.text):
-        update.message.reply_text(
-            text='Неправильно… Попробуешь ещё раз?',
-            reply_markup=reply_markup
-        )
+        message = 'Неправильно… Попробуешь ещё раз?'
+        send_message(update, reply_markup, message)
         return TYPING_REPLY
-    update.message.reply_text(
-        text='Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»',
-        reply_markup=reply_markup
-    )
+
+    r.delete(str(update.message.from_user.id))
+    message = 'Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»'
+    send_message(update, reply_markup, message)
     return CHOOSING
 
 
 def give_up(update: Update, context: CallbackContext):
-    redis_uri = urlparse(env.str('REDIS_URI'))
-    r = redis.StrictRedis(
-        host=redis_uri.hostname,
-        port=int(redis_uri.port),
-        password=redis_uri.password,
-        charset='utf-8',
-        decode_responses=True
-    )
-    keyboard = [['Новый вопрос', 'Сдаться'], ['Мой счет']]
-    reply_markup = ReplyKeyboardMarkup(keyboard)
+    reply_markup = init_reply_markup()
+    r = init_redis(update, reply_markup)
     random_question = random.choice(list(QUESTIONS.items()))
 
-    try:
-        if not r.get(str(update.message.from_user.id)):
-            update.message.reply_text(
-                text='Получите сначала вопрос. Еще рано сдаваться)',
-                reply_markup=reply_markup
-            )
-            return CHOOSING
-        answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
-        r.set(str(update.message.from_user.id), random_question[0], 600)
-    except redis.exceptions.ConnectionError:
-        send_error_msg(update, reply_markup)
+    if not r:
         return TYPING_REPLY
 
-    update.message.reply_text(
-        text=f'Правильный ответ:\n{answer_text}\n\n\n'
-             f'Попробуйте ответить на этот вопрос:\n{random_question[1]["question"]}',
-        reply_markup=reply_markup
-    )
+    if not r.get(str(update.message.from_user.id)):
+        message = 'Получите сначала вопрос. Еще рано сдаваться)'
+        send_message(update, reply_markup, message)
+        return CHOOSING
+
+    answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
+    r.set(str(update.message.from_user.id), random_question[0], 600)
+    message = f'Правильный ответ:\n{answer_text}\n\n\n'\
+              f'Попробуйте ответить на этот вопрос:\n{random_question[1]["question"]}'
+    send_message(update, reply_markup, message)
     return TYPING_REPLY
 
 
 def cancel(bot, update):
-    update.message.reply_text('Bye! I hope we can talk again some day.',
-                              reply_markup=ReplyKeyboardRemove())
-
+    update.message.reply_text(
+        'Bye! I hope we can talk again some day.',
+        reply_markup=ReplyKeyboardRemove()
+    )
     return ConversationHandler.END
 
 
 def error(bot, update, err):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, err)
-
-
-def send_error_msg(update: Update, reply_markup: ReplyKeyboardMarkup):
-    update.message.reply_text(
-        text='Сервис временно не доступен. Попробуйте позже.',
-        reply_markup=reply_markup
-    )
 
 
 def main():
@@ -163,11 +148,14 @@ def main():
             entry_points=[
                 CommandHandler('start', start),
                 MessageHandler(Filters.regex(r'Новый вопрос'), handle_new_question_request),
-                MessageHandler(Filters.regex(r'Сдаться'), give_up)
+                MessageHandler(Filters.regex(r'Сдаться'), give_up),
+                MessageHandler(Filters.text, handle_solution_attempt)
             ],
             states={
                 CHOOSING: [
                     MessageHandler(Filters.regex(r'Новый вопрос'), handle_new_question_request),
+                    MessageHandler(Filters.regex(r'Сдаться'), give_up),
+                    MessageHandler(Filters.text, handle_solution_attempt)
                 ],
                 TYPING_REPLY: [
                     MessageHandler(Filters.regex(r'Сдаться'), give_up),
