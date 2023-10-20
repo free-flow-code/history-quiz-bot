@@ -42,15 +42,19 @@ def init_redis(event, vk_api, keyboard):
             charset='utf-8',
             decode_responses=True
         )
+        r.ping()
         return r
     except redis.exceptions.ConnectionError:
-        message = "Сервис временно не доступен. Попробуйте позже."
+        message = 'Сервис временно не доступен. Попробуйте позже.'
         send_message(event, vk_api, keyboard, message)
 
 
 def send_new_question(event, vk_api):
     keyboard = init_keyboard()
     r = init_redis(event, vk_api, keyboard)
+
+    if not r:
+        return
 
     random_question = random.choice(list(QUESTIONS.items()))
     r.set(str(event.user_id), random_question[0], 600)
@@ -61,6 +65,9 @@ def send_new_question(event, vk_api):
 def echo(event, vk_api):
     keyboard = init_keyboard()
     r = init_redis(event, vk_api, keyboard)
+
+    if not r:
+        return 
 
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
         match event.text:
