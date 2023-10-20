@@ -32,3 +32,10 @@ def create_questions_dict(filename: str) -> dict:
         )
 
     return questions
+
+
+def is_correct_answer(answer_text, user_answer):
+    correct_answer = re.split(r'[.(]', answer_text)[0]
+    if not user_answer.lower() == correct_answer.lower():
+        return False
+    return True
