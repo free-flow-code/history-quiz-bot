@@ -9,10 +9,8 @@ def create_questions_dict(filename: str) -> dict:
     splitted_texts = cutted_text.split('\n\n\n')
     cleared_texts = [clear_text for clear_text in splitted_texts if 'Вопрос' in clear_text]
     questions = {}
-    question_index = 0
 
-    for question_details in cleared_texts:
-        question_index += 1
+    for question_index, question_details in enumerate(cleared_texts):
         question_start_index = question_details.find('\n')
         question_end_index = question_details.find('Ответ:')
         answer_start_index = re.search('Ответ:\n', question_details).span()[1]
@@ -20,7 +18,7 @@ def create_questions_dict(filename: str) -> dict:
         questions.update(
             {
                 str(question_index): {
-                    'question': question_details[question_start_index:question_end_index].replace('\n', ''),
+                    'question': question_details[question_start_index:question_end_index].replace('\n', ' '),
                     'answer': question_details[answer_start_index:answer_end_index].replace('\n', '')
                 }
             }
