@@ -1,8 +1,8 @@
 import sys
-import redis
 import random
 from environs import Env
 from urllib.parse import urlparse
+from redis_funcs import init_redis
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
 from question_processing_funcs import create_questions_dict, is_correct_answer
@@ -32,23 +32,6 @@ def send_message(update: Update, reply_markup: ReplyKeyboardMarkup, message: str
     )
 
 
-def init_redis(update, reply_markup):
-    redis_uri = urlparse(env.str('REDIS_URI'))
-    try:
-        r = redis.StrictRedis(
-            host=redis_uri.hostname,
-            port=int(redis_uri.port),
-            password=redis_uri.password,
-            charset='utf-8',
-            decode_responses=True
-        )
-        r.ping()
-        return r
-    except redis.exceptions.ConnectionError:
-        message = 'Сервис временно не доступен. Попробуйте позже.'
-        send_message(update, reply_markup, message)
-
-
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
@@ -64,13 +47,12 @@ def start(update: Update, context: CallbackContext) -> None:
 
 def handle_new_question_request(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
-    r = init_redis(update, reply_markup)
 
-    if not r:
+    if not redis:
         return CHOOSING
 
     random_question = random.choice(list(QUESTIONS.items()))
-    r.set(str(update.message.from_user.id), random_question[0], 600)
+    redis.set(str(update.message.from_user.id), random_question[0], 600)
     message = random_question[1]['question']
     send_message(update, reply_markup, message)
 
@@ -79,24 +61,23 @@ def handle_new_question_request(update: Update, context: CallbackContext):
 
 def handle_solution_attempt(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
-    r = init_redis(update, reply_markup)
 
-    if not r:
+    if not redis:
         return TYPING_REPLY
 
-    if not r.get(str(update.message.from_user.id)):
+    if not redis.get(str(update.message.from_user.id)):
         message = 'Ответ остался без вопроса. Получите новый вопрос.'
         send_message(update, reply_markup, message)
         return CHOOSING
 
-    answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
+    answer_text = QUESTIONS[f'{redis.get(str(update.message.from_user.id))}']['answer']
 
     if not is_correct_answer(answer_text, update.message.text):
         message = 'Неправильно… Попробуешь ещё раз?'
         send_message(update, reply_markup, message)
         return TYPING_REPLY
 
-    r.delete(str(update.message.from_user.id))
+    redis.delete(str(update.message.from_user.id))
     message = 'Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»'
     send_message(update, reply_markup, message)
     return CHOOSING
@@ -104,19 +85,18 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
 
 def give_up(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
-    r = init_redis(update, reply_markup)
     random_question = random.choice(list(QUESTIONS.items()))
 
-    if not r:
+    if not redis:
         return TYPING_REPLY
 
-    if not r.get(str(update.message.from_user.id)):
+    if not redis.get(str(update.message.from_user.id)):
         message = 'Получите сначала вопрос. Еще рано сдаваться)'
         send_message(update, reply_markup, message)
         return CHOOSING
 
-    answer_text = QUESTIONS[f'{r.get(str(update.message.from_user.id))}']['answer']
-    r.set(str(update.message.from_user.id), random_question[0], 600)
+    answer_text = QUESTIONS[f'{redis.get(str(update.message.from_user.id))}']['answer']
+    redis.set(str(update.message.from_user.id), random_question[0], 600)
     message = f'Правильный ответ:\n{answer_text}\n\n\n'\
               f'Попробуйте ответить на этот вопрос:\n{random_question[1]["question"]}'
     send_message(update, reply_markup, message)
@@ -136,8 +116,11 @@ def error(bot, update, err):
     logger.warning('Update "%s" caused error "%s"', update, err)
 
 
-def main():
+if __name__ == '__main__':
     tg_token = env.str('TG_TOKEN')
+    redis_uri = urlparse(env.str('REDIS_URI'))
+
+    redis = init_redis(redis_uri)
 
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -175,7 +158,3 @@ def main():
         updater.start_polling()
     except Exception as err:
         logging.exception(err)
-
-
-if __name__ == '__main__':
-    main()
