@@ -9,14 +9,6 @@ from question_processing_funcs import create_questions_dict, is_correct_answer
 import logging
 
 logger = logging.getLogger(__name__)
-env = Env()
-env.read_env()
-
-try:
-    QUESTIONS = create_questions_dict(env.str('FILENAME'))
-except FileNotFoundError:
-    sys.stdout.write('Файл не найден.')
-    exit()
 CHOOSING, TYPING_REPLY = range(2)
 
 
@@ -51,7 +43,7 @@ def handle_new_question_request(update: Update, context: CallbackContext):
     if not redis:
         return CHOOSING
 
-    random_question = random.choice(list(QUESTIONS.items()))
+    random_question = random.choice(list(questions.items()))
     redis.set(str(update.message.from_user.id), random_question[0], 600)
     message = random_question[1]['question']
     send_message(update, reply_markup, message)
@@ -70,7 +62,7 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
         send_message(update, reply_markup, message)
         return CHOOSING
 
-    answer_text = QUESTIONS[f'{redis.get(str(update.message.from_user.id))}']['answer']
+    answer_text = questions[f'{redis.get(str(update.message.from_user.id))}']['answer']
 
     if not is_correct_answer(answer_text, update.message.text):
         message = 'Неправильно… Попробуешь ещё раз?'
@@ -85,7 +77,7 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
 
 def give_up(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
-    random_question = random.choice(list(QUESTIONS.items()))
+    random_question = random.choice(list(questions.items()))
 
     if not redis:
         return TYPING_REPLY
@@ -95,7 +87,7 @@ def give_up(update: Update, context: CallbackContext):
         send_message(update, reply_markup, message)
         return CHOOSING
 
-    answer_text = QUESTIONS[f'{redis.get(str(update.message.from_user.id))}']['answer']
+    answer_text = questions[f'{redis.get(str(update.message.from_user.id))}']['answer']
     redis.set(str(update.message.from_user.id), random_question[0], 600)
     message = f'Правильный ответ:\n{answer_text}\n\n\n'\
               f'Попробуйте ответить на этот вопрос:\n{random_question[1]["question"]}'
@@ -117,6 +109,15 @@ def error(bot, update, err):
 
 
 if __name__ == '__main__':
+    env = Env()
+    env.read_env()
+
+    try:
+        questions = create_questions_dict(env.str('FILENAME'))
+    except FileNotFoundError:
+        sys.stdout.write('Файл не найден.')
+        exit()
+
     tg_token = env.str('TG_TOKEN')
     redis_uri = urlparse(env.str('REDIS_URI'))
 

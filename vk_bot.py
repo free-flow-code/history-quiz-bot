@@ -9,15 +9,6 @@ from question_processing_funcs import create_questions_dict, is_correct_answer
 from environs import Env
 import logging
 
-env = Env()
-env.read_env()
-
-try:
-    QUESTIONS = create_questions_dict(env.str('FILENAME'))
-except FileNotFoundError:
-    sys.stdout.write('Файл не найден.')
-    exit()
-
 
 def init_keyboard():
     keyboard = VkKeyboard(one_time=True)
@@ -44,7 +35,7 @@ def send_new_question(event, vk_api):
     if not redis:
         return
 
-    random_question = random.choice(list(QUESTIONS.items()))
+    random_question = random.choice(list(questions.items()))
     redis.set(str(event.user_id), random_question[0], 600)
     message = random_question[1]['question']
     send_message(event, vk_api, keyboard, message)
@@ -65,7 +56,7 @@ def echo(event, vk_api):
                     message = 'Получите сначала вопрос. Еще рано сдаваться)'
                     send_message(event, vk_api, keyboard, message)
                 else:
-                    answer_text = QUESTIONS[f'{redis.get(str(event.user_id))}']['answer']
+                    answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
                     message = f'Правильный ответ:\n{answer_text}\n\n\n'
                     send_message(event, vk_api, keyboard, message)
                     send_new_question(event, vk_api)
@@ -76,7 +67,7 @@ def echo(event, vk_api):
                     message = 'Ответ остался без вопроса. Получите новый вопрос.'
                     send_message(event, vk_api, keyboard, message)
                 else:
-                    answer_text = QUESTIONS[f'{redis.get(str(event.user_id))}']['answer']
+                    answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
                     if not is_correct_answer(answer_text, event.text):
                         message = 'Неправильно… Попробуешь ещё раз?'
                         send_message(event, vk_api, keyboard, message)
@@ -87,6 +78,15 @@ def echo(event, vk_api):
 
 
 if __name__ == "__main__":
+    env = Env()
+    env.read_env()
+
+    try:
+        questions = create_questions_dict(env.str('FILENAME'))
+    except FileNotFoundError:
+        sys.stdout.write('Файл не найден.')
+        exit()
+
     vk_token = env.str('VK_TOKEN')
     redis_uri = urlparse(env.str('REDIS_URI'))
 
