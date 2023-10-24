@@ -1,14 +1,9 @@
 import re
-import sys
 
 
 def create_questions_dict(filename: str) -> dict:
-    try:
-        with open(filename, 'r', encoding='KOI8-R') as file:
-            content = file.read()
-    except FileNotFoundError:
-        sys.stdout.write('Файл не найден.')
-        exit()
+    with open(filename, 'r', encoding='KOI8-R') as file:
+        content = file.read()
 
     cutted_text = content[content.find('Вопрос'):]
     splitted_texts = cutted_text.split('\n\n\n')

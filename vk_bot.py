@@ -1,3 +1,4 @@
+import sys
 import redis
 import random
 import vk_api as vk
@@ -10,7 +11,12 @@ import logging
 
 env = Env()
 env.read_env()
-QUESTIONS = create_questions_dict(env.str('FILENAME'))
+
+try:
+    QUESTIONS = create_questions_dict(env.str('FILENAME'))
+except FileNotFoundError:
+    sys.stdout.write('Файл не найден.')
+    exit()
 
 
 def init_keyboard():
@@ -67,7 +73,7 @@ def echo(event, vk_api):
     r = init_redis(event, vk_api, keyboard)
 
     if not r:
-        return 
+        return
 
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
         match event.text:

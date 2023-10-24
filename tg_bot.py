@@ -1,3 +1,4 @@
+import sys
 import redis
 import random
 from environs import Env
@@ -10,7 +11,12 @@ import logging
 logger = logging.getLogger(__name__)
 env = Env()
 env.read_env()
-QUESTIONS = create_questions_dict(env.str('FILENAME'))
+
+try:
+    QUESTIONS = create_questions_dict(env.str('FILENAME'))
+except FileNotFoundError:
+    sys.stdout.write('Файл не найден.')
+    exit()
 CHOOSING, TYPING_REPLY = range(2)
 
 
