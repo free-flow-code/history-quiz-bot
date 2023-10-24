@@ -41,40 +41,41 @@ def send_new_question(event, vk_api):
     send_message(event, vk_api, keyboard, message)
 
 
-def echo(event, vk_api):
+def new_messages_handler(event, vk_api):
     keyboard = init_keyboard()
 
     if not redis:
         return
 
-    if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-        match event.text:
-            case 'Новый вопрос':
+    match event.text:
+        case 'Новый вопрос':
+            send_new_question(event, vk_api)
+
+        case 'Сдаться':
+            if not redis.get(str(event.user_id)):
+                message = 'Получите сначала вопрос. Еще рано сдаваться)'
+                send_message(event, vk_api, keyboard, message)
+            else:
+                answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
+                message = f'Правильный ответ:\n{answer_text}\n\n\n'
+                send_message(event, vk_api, keyboard, message)
                 send_new_question(event, vk_api)
-            case 'Сдаться':
-                if not redis.get(str(event.user_id)):
-                    message = 'Получите сначала вопрос. Еще рано сдаваться)'
+        case 'Мой счет':
+            pass
+        
+        case _:
+            if not redis.get(str(event.user_id)):
+                message = 'Ответ остался без вопроса. Получите новый вопрос.'
+                send_message(event, vk_api, keyboard, message)
+            else:
+                answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
+                if not is_correct_answer(answer_text, event.text):
+                    message = 'Неправильно… Попробуешь ещё раз?'
                     send_message(event, vk_api, keyboard, message)
                 else:
-                    answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
-                    message = f'Правильный ответ:\n{answer_text}\n\n\n'
+                    redis.delete(str(event.user_id))
+                    message = 'Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»'
                     send_message(event, vk_api, keyboard, message)
-                    send_new_question(event, vk_api)
-            case 'Мой счет':
-                pass
-            case _:
-                if not redis.get(str(event.user_id)):
-                    message = 'Ответ остался без вопроса. Получите новый вопрос.'
-                    send_message(event, vk_api, keyboard, message)
-                else:
-                    answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
-                    if not is_correct_answer(answer_text, event.text):
-                        message = 'Неправильно… Попробуешь ещё раз?'
-                        send_message(event, vk_api, keyboard, message)
-                    else:
-                        redis.delete(str(event.user_id))
-                        message = 'Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»'
-                        send_message(event, vk_api, keyboard, message)
 
 
 if __name__ == "__main__":
@@ -107,6 +108,6 @@ if __name__ == "__main__":
     try:
         for event in longpoll.listen():
             if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                echo(event, vk_api)
+                new_messages_handler(event, vk_api)
     except Exception as err:
         logging.exception(err)
