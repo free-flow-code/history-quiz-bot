@@ -1,8 +1,8 @@
 import sys
 import random
+import redis as r
 import vk_api as vk
 from urllib.parse import urlparse
-from redis_funcs import init_redis
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from question_processing_funcs import create_questions_dict, is_correct_answer
@@ -29,7 +29,7 @@ def send_message(event, vk_api, keyboard, message):
     )
 
 
-def send_new_question(event, vk_api):
+def send_new_question(event, vk_api, redis, questions):
     keyboard = init_keyboard()
 
     if not redis:
@@ -41,7 +41,7 @@ def send_new_question(event, vk_api):
     send_message(event, vk_api, keyboard, message)
 
 
-def new_messages_handler(event, vk_api):
+def new_messages_handler(event, vk_api, redis, questions):
     keyboard = init_keyboard()
 
     if not redis:
@@ -49,7 +49,7 @@ def new_messages_handler(event, vk_api):
 
     match event.text:
         case 'Новый вопрос':
-            send_new_question(event, vk_api)
+            send_new_question(event, vk_api, redis, questions)
 
         case 'Сдаться':
             if not redis.get(str(event.user_id)):
@@ -59,10 +59,10 @@ def new_messages_handler(event, vk_api):
                 answer_text = questions[f'{redis.get(str(event.user_id))}']['answer']
                 message = f'Правильный ответ:\n{answer_text}\n\n\n'
                 send_message(event, vk_api, keyboard, message)
-                send_new_question(event, vk_api)
+                send_new_question(event, vk_api, redis, questions)
         case 'Мой счет':
             pass
-        
+
         case _:
             if not redis.get(str(event.user_id)):
                 message = 'Ответ остался без вопроса. Получите новый вопрос.'
@@ -78,7 +78,7 @@ def new_messages_handler(event, vk_api):
                     send_message(event, vk_api, keyboard, message)
 
 
-if __name__ == "__main__":
+def main():
     env = Env()
     env.read_env()
 
@@ -90,8 +90,13 @@ if __name__ == "__main__":
 
     vk_token = env.str('VK_TOKEN')
     redis_uri = urlparse(env.str('REDIS_URI'))
-
-    redis = init_redis(redis_uri)
+    redis = r.StrictRedis(
+        host=redis_uri.hostname,
+        port=int(redis_uri.port),
+        password=redis_uri.password,
+        charset='utf-8',
+        decode_responses=True
+    )
 
     vk_session = vk.VkApi(token=vk_token)
     vk_api = vk_session.get_api()
@@ -108,6 +113,10 @@ if __name__ == "__main__":
     try:
         for event in longpoll.listen():
             if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                new_messages_handler(event, vk_api)
+                new_messages_handler(event, vk_api, redis, questions)
     except Exception as err:
         logging.exception(err)
+
+
+if __name__ == "__main__":
+    main()

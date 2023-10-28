@@ -1,8 +1,8 @@
 import sys
 import random
+import redis as r
 from environs import Env
 from urllib.parse import urlparse
-from redis_funcs import init_redis
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
 from question_processing_funcs import create_questions_dict, is_correct_answer
@@ -39,6 +39,8 @@ def start(update: Update, context: CallbackContext) -> None:
 
 def handle_new_question_request(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
+    redis = context.bot_data['redis']
+    questions = context.bot_data['questions']
 
     if not redis:
         return CHOOSING
@@ -53,6 +55,8 @@ def handle_new_question_request(update: Update, context: CallbackContext):
 
 def handle_solution_attempt(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
+    redis = context.bot_data['redis']
+    questions = context.bot_data['questions']
 
     if not redis:
         return TYPING_REPLY
@@ -77,6 +81,8 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
 
 def give_up(update: Update, context: CallbackContext):
     reply_markup = init_reply_markup()
+    redis = context.bot_data['redis']
+    questions = context.bot_data['questions']
     random_question = random.choice(list(questions.items()))
 
     if not redis:
@@ -108,7 +114,7 @@ def error(bot, update, err):
     logger.warning('Update "%s" caused error "%s"', update, err)
 
 
-if __name__ == '__main__':
+def main():
     env = Env()
     env.read_env()
 
@@ -120,8 +126,13 @@ if __name__ == '__main__':
 
     tg_token = env.str('TG_TOKEN')
     redis_uri = urlparse(env.str('REDIS_URI'))
-
-    redis = init_redis(redis_uri)
+    redis = r.StrictRedis(
+        host=redis_uri.hostname,
+        port=int(redis_uri.port),
+        password=redis_uri.password,
+        charset='utf-8',
+        decode_responses=True
+    )
 
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -134,6 +145,9 @@ if __name__ == '__main__':
     try:
         updater = Updater(tg_token, use_context=True)
         dp = updater.dispatcher
+        dp.bot_data['redis'] = redis
+        dp.bot_data['questions'] = questions
+
         handlers = ConversationHandler(
             entry_points=[
                 CommandHandler('start', start),
@@ -159,3 +173,7 @@ if __name__ == '__main__':
         updater.start_polling()
     except Exception as err:
         logging.exception(err)
+
+
+if __name__ == '__main__':
+    main()
