@@ -5,7 +5,7 @@ import vk_api as vk
 from urllib.parse import urlparse
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-from question_processing_funcs import create_questions_dict, is_correct_answer
+from questions_processing import create_questions_dict, is_correct_answer
 from environs import Env
 import logging
 

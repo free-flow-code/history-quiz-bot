@@ -5,7 +5,7 @@ from environs import Env
 from urllib.parse import urlparse
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
-from question_processing_funcs import create_questions_dict, is_correct_answer
+from questions_processing import create_questions_dict, is_correct_answer
 import logging
 
 logger = logging.getLogger(__name__)
